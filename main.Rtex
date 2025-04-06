@@ -1,0 +1,601 @@
+\documentclass[sn-mathphys-ay]{sn-jnl}% Math and Physical Sciences Numbered Reference Style
+
+% We are going for this journal https://link.springer.com/journal/13278/submission-guidelines#Instructions%20for%20Authors, Social Network Analysis and Mining
+
+
+\usepackage{graphicx}%
+\usepackage{multirow}%
+\usepackage{amsmath,amssymb,amsfonts}%
+\usepackage{amsthm}%
+\usepackage{mathrsfs}%
+\usepackage[title]{appendix}%
+\usepackage{xcolor}%
+\usepackage{textcomp}%
+\usepackage{manyfoot}%
+\usepackage{booktabs}%
+\usepackage{algorithm}%
+\usepackage{algorithmicx}%
+\usepackage{algpseudocode}%
+\usepackage{listings}%
+%%%%
+%%%%
+
+\raggedbottom
+%%\unnumbered% uncomment this for unnumbered level heads
+%%
+%%
+% Define macro for {\em stans}
+\newcommand{\stans}{{\em stans}}
+\newcommand{\tractor}{{\em tractor}}
+\newcommand{\coll}{{\em colleganza}}
+
+\begin{document}
+
+\title[{\em Colleganza} contracts and the Serrata in Venice]{An analysis of {\em colleganza} contracts in the Republic of Venice and its relationship to the Serrata of the Great Council}
+
+%%=============================================================%%
+%% GivenName	-> \fnm{Joergen W.}
+%% Particle	-> \spfx{van der} -> surname prefix
+%% FamilyName	-> \sur{Ploeg}
+%% Suffix	-> \sfx{IV}
+%% \author*[1,2]{\fnm{Joergen W.} \spfx{van der} \sur{Ploeg}
+%%  \sfx{IV}}\email{iauthor@gmail.com}
+%%=============================================================%%
+
+\author*[1,2]{\fnm{Juan J.} \sur{Merelo-Guervós}}\email{jmerelo@ugr.es}
+
+\author[3]{\fnm{M. Cristina} \sur{Molinari}}\email{cmolinar@unive.it}
+\equalcont{These authors contributed equally to this work.}
+
+\affil*[1]{\orgdiv{Department of Computer Engineering, Automatics and Robotics}, \orgname{University of Granada}, \orgaddress{\state{Granada}, \country{Spain}}}
+
+\affil[2]{\orgname{CITIC}, \state{Granada}, \country{Spain}}
+
+\affil[3]{\orgdiv{Dipartimento di Economia}, \orgname{Ca' Foscari University of Venice}, \orgaddress{ \state{Venice}, \country{Italy}}}
+
+\abstract{From its inception, the Republic of Venice was  a state focused on maritime trade, an activity that required large amounts of capital and involved many risks.  To meet these needs, the Republic used a type of contract called {\em colleganza}, a form of profit-sharing partnership by which a sedentary investor ({\em stans}) financed a travelling merchant ({\em tractor}). The {\em colleganza} benefited a large portion of the population and constituted a commercial as well as a social network. In this paper, we use an existing database of {\em colleganza} contracts to investigate access to the nobility  in the Republic of Venice during the {\em Serrata} (1297--1323), a constitutional process through which membership in the Great Council,  the most important political assembly of the republic, became hereditary and limited to noble families, making the patriciate the ruling class of Venice. We first show that  there was no social stratification between the role of  {\em stans} and {\em tractor} and that many families switched from one role to the other. Next, we investigate the probability of being admitted to the Great Council and find that it was higher for families who were more active in the {\em colleganza}, both in terms of the number of contracts and roles held,  and who had higher DNSL-betweenness  in the {\em colleganza} social network. We conclude that a strong presence in various roles in the {\em colleganza} contracts and centrality in the network were sources of social capital that could be harnessed to ensure the family's social advancement and access to nobility.}
+
+\keywords{Social networks, maritime trade, commercial contracts, social mobility, Republic of Venice, Early Modern social history}
+
+%%\pacs[JEL Classification]{D8, H51}
+
+%%\pacs[MSC Classification]{35A01, 65L10, 65L12, 65L20, 65L70}
+
+\maketitle
+
+<<dupNodes.duplicated, echo=F, messages=F>>=
+# Copy of needed dupNodes functions to rig it to to work in Overleaf
+
+.original_graph_nodes <- function( dup.graph ) {
+
+  return( V(dup.graph)[ !grepl("'$", V(dup.graph)$name) ] )
+}
+
+# Duplicate nodes with self-loops from a existing graph
+dup.nodes.from.graph <- function( graph.with.self.loops ) {
+  if ( !any_loop(graph.with.self.loops) ) {
+    return( graph.with.self.loops )
+  }
+  modified.graph <- graph.with.self.loops
+  original.edges <- as_edgelist(modified.graph)
+  self.edges <- original.edges[ which_loop(modified.graph),]
+
+  if (length(self.edges) == 2) {
+    nodes.with.self.loops <- self.edges[1]
+  } else {
+    nodes.with.self.loops <- unique(self.edges[,1])
+  }
+  # First add nodes
+  for ( node in nodes.with.self.loops ) {
+    new.node <- paste0(node,"'")
+    modified.graph <- add_vertices(modified.graph,1,name=new.node)
+  }
+
+  # Then add edges to nodes
+  for ( node in nodes.with.self.loops ) {
+    new.node <- paste0(node,"'")
+    for ( vertex in original.edges[ original.edges[,1] == node,2] ) {
+      if ( vertex != node ) {
+        modified.graph <- add_edges(modified.graph, c(vertex,new.node))
+        if ( vertex %in% nodes.with.self.loops ) {
+          modified.graph <- add_edges(modified.graph, c(paste0(vertex,"'"),new.node))
+        }
+      }
+    }
+    for ( vertex in original.edges[ original.edges[,2] == node,1] ) {
+      if ( vertex != node ) {
+        modified.graph <- add_edges(modified.graph, c(new.node,vertex))
+      }
+    }
+  }
+
+  if (length(self.edges) == 2) {
+    new.node <- paste0(self.edges[1],"'")
+    modified.graph <- add_edges(modified.graph, c(self.edges[1],new.node))
+    modified.graph <- delete_edges(modified.graph, paste0(self.edges[1],"|",self.edges[2]))
+
+  } else {
+    for ( node in  self.edges[,1]) {
+      new.node <- paste0(node,"'")
+      modified.graph <- add_edges(modified.graph, c(node,new.node))
+      modified.graph <- delete_edges(modified.graph, paste0(node,"|",node))
+    }
+  }
+
+  return( modified.graph )
+}
+
+DNSLbetweenness_for_graph <- function( graph.with.self.loops ) {
+  dup.graph <- dup.nodes.from.graph( graph.with.self.loops )
+  betweenness <- betweenness(dup.graph)
+  original.nodes <- .original_graph_nodes(dup.graph)
+  return( betweenness[ original.nodes ] )
+}
+@
+
+\section{Introduction}\label{sec1}
+
+% Why do we want to do this
+%
+The topic of economic and social mobility in the late Middle Ages has been studied in various ways. One interesting aspect is the relationship between wealth and social status, and the mechanisms that enabled or prevented people who had accumulated wealth from participating in civil society and political power. Here we consider the case of the Republic of Venice, which experienced rapid economic growth during the eleventh and twelfth centuries thanks to its strategic geographic position at the crossroads between the East and the West. Venice's favourable access to the Mediterranean commercial routes made long-distance maritime trade one of the main drivers of its wealth accumulation, and the need to finance this commercial activity led to the widespread use of the contracts of {\em colleganza}.
+
+The {\em colleganza},  known elsewhere as {\em commenda}, was a commercial arrangement common  in medieval Italy and throughout the Mediterranean. It was a partnership agreement formed for a single trade expedition and involved two parties: a sedentary investor, called {\em stans}, who provided the capital, and a travelling merchant, called {\em tractor}, who used the money received to trade. At the end of the journey, the {\em tractor} would return to the {\em stans} the initial capital and three-fourths of the profit. In an older version of the contract, sometimes referred to as {\em societas maris}, the  merchant supplied one-third of the capital, and the profits were divided equally. Modern historians usually refer to the two forms as, respectively, unilateral and bilateral {\em colleganza} \citep{deroover1963,lane:colleganza}, \citep[chap 4]{luzzatto1954}.
+
+The {\em colleganza} contributed to economic growth in many ways: first, it made trade opportunities available to ambitious and capable merchants who lacked capital. Second, it enabled investors to mobilize their savings by putting them to good use, and to diversify their investments. Third,  it made it possible to share the risk. Indeed, sea-borne trade was potentially very profitable, but it entailed what Venetians called ``the risk of the sea and the people'', namely the risk of shipwreck, piracy, and confiscation of goods by foreign authorities, as well as the economic risk associated with price fluctuations; the possibility of sharing these risks with others made the investment more attractive. For all these important functions, the {\em colleganza} was central  to Venice's economic success in the eleventh and twelfth centuries.
+
+In this paper we use a database, originally developed by \cite{PugaTrefler}, of hundreds of surviving {\em colleganza} contracts covering the years  from $1073$ to $1342$,  to address two main issues. First, we want to figure out whether there was social stratification in the way Venetians participated in the {\em colleganza}. Second, we want to investigate the extent to which families who had been successful in long-distance trade were able to convert their commercial success into political power.
+
+Let us first consider social stratification. We know that in Venice participation in the {\em colleganza} was broad, not only because both nobles and commoners took part,  but also because the {\em stans} could be of very different types. Sometimes they were experienced merchants who were no longer able to undertake dangerous journeys but were still able to sell  the goods brought back by the {\em tractor}. But in other cases, it could be  people with no commercial experience, such as priests and nuns, widows, notaries, artisans, interested  only in getting a return on their investment \citep{kedar1976merchants,de2008secret}, \citep[ch 4]{luzzatto1954}. %Luzzatto p. 67 suggeriscsce che la distizione stans\tractor deve essere investigata%
+
+What remains to be investigated is whether there were differences in social status  between the {\em stans} and the {\em tractor}, and whether there was a clear path of social advancement between the two positions. In other words, was the travelling merchant a role for those who had no money while the investors were only the wealthy? And, further, was there a clear direction for upward mobility, i.e., did the {\em tractor} become a {\em stans} once he became rich?\footnote{\ Obviously, priests, nuns and widows could hardly serve in the role of a {\em tractor,} and the question of changing roles for them seems meaningless. However, remember that our analysis is done at the family level.}  Since no data are available on the wealth of those involved in the {\em colleganza}, we will need to come up with indirect ways to find out, by looking at how the same family shifted over time from one role in the contract to another.
+
+We then turn to the relationship between access to political power and participation in maritime trade gains. To illustrate this point, we must first understand who the ruling class was and how it evolved over time. The Republic of Venice was governed by the adult males members of the {\em Great Council}, the chief political assembly in charge of  electing the Doge, the head of state of the republic, and all other major political and judicial deliberations.
+
+The criteria for assessing eligibility for the council changed considerably in the late thirteenth  and early fourteenth centuries, thus at the very time when the {\em colleganza} contracts were the main tool for financing long-distance trade. The constitutional reform,  known as the {\em Serrata} (closure),  was an ongoing process which began in 1297 and was largely completed by 1323. At the end of this process, admission to the council become hereditary and nobility was equated with council membership; this led to the full convergence of noble status, council membership and participation in the ruling class. Prior to the {\em Serrata,} there were two types of council members:  some were  elected for one year (but re-eligible), but many others were high-ranking officials of the republic admitted {\em ex-officio} \citep{lane:colleganza}, \cite[p. 207--20]{maranini1927}. This state of affairs changed in 1297, when an act established that those who had been members of the Great Council in the previous four years could become permanent members if they received at least twelve votes in the {\em Quarantia} (Council of the Forty), one of the highest constitutional bodies of the republic. In addition, those  who had not been members in the previous four years could be eligible for the election in the Forty, if nominated by the doge and his councillors (admission {\em per gratiam}). This is why the {\em Serrata}, contrary to its name, initially led to an enlargement of the ruling class and the admission of  new prominent families. Later, however, more restrictive policies were introduced: for instance, the quorum in the {\em Quarantia} was progressively raised  and the inclusion had to be further confirmed by a vote in the Great Council \citep{rosch2000}. As a result, very few people were admitted  {\em per gratiam} after 1310.  This long  political and social process come to an end in 1323, when patrilineal hereditary of the patriciate was established. %rosch 2002, p. 70, 72%
+%After 1323 very few additions to the patriciate took place, mostly after the War of Chioggia (1381) and the wars of Candia and Morea in the seventeenth century. %Raines Storia di Venezia - Rivista, I, 2003, 1-64, ISSN 1724-7446, ©2003 Firenze University Press Cooptazione, aggregazione e presenza al Maggior Consiglio: le casate del patriziato veneziano, 1297-1797 Dorit Raines
+
+The admission criteria we have just described meant that, during the {\em Serrata} process, in order to be admitted to the Great Council and thus to the nobility, it was necessary to garner a sufficient number of votes in the {\em Quarantia} and, for some prospective members, also to be first nominated by the doge and his councillors. This implies that a family's admission depended crucially on the social network of influential people the would-be candidate could rely.  An interesting question, then, is whether one's position in the social network of {\em colleganza} contracts could play a role in promoting admission to the ruling class and, if so, which of the roles assumed in the contract, either {\em stans} or {\em tractor}, translated most successfully into political power.
+
+To summarize, we will use the {\em colleganza} network to answer the following research questions:\begin{itemize}
+
+%\item {\bf RQ1:} Does data show a change of regime in the contract time series, corresponding to a changing definition of the {\em stans} and {\em tractor} role?
+\item {\bf RQ1:} Was there a sharp division between {\em tractor} and {\em stans} families? Was there a clear path of evolution from {\em tractor} to {\em stans}, that is, from sailing merchant to investor?
+\item {\bf RQ2:} Were the chances of being admitted to the Great Council  influenced by the role the family played in the {\em colleganza} and the number of contracts in which the family was involved?
+\item {\bf RQ3:} What was the relationship between the social capital accumulated in the  social network of {\em colleganza} contracts and a family's probability of admission to the Great Council and, hence, to the nobility?
+
+% \item {\bf RQ6:} if we consider the matrimonial network a continuation of the colleganza network, since they represent different aspects of the social network, is there any fundamental change in the {\em colleganza social network} that we could attribute to the Serrata?
+
+\end{itemize}
+
+To this end,  we use statistical methods and social network analysis to characterize the evolution over time of families' participation in the {\em colleganza} and the correlation between a family's position in the network, a proxy for the social capital  accumulated by the family, and admission to the Great Council.
+
+Before proceeding with the analysis, we need to consider whether the contracts of {\em colleganza}, which were only a fraction of all the social interactions that took place in the Republic, can be used to study the social capital of Venetian families. While we are well aware that  there were other links besides  commercial and business ones, Venice was in many senses  a special case. In fact, because of its geographical conformation, the republic was  forced to rely almost completely on trade, at least at this stage of its history, so much so that it became an essential part of the city's life. Indirect evidence of the importance of the commercial dimension can be found in  \citet[p. 104]{lane1973}'s observation that the interests of merchants involved in long-distance trade  were so much part of Venice that, unlike most other {\em communes} in the Middle Ages, a guild was never formed to promote them, because there was no need for it: they were already at the centre  of everything.  This is why we believe that the {\em colleganza} network  can be considered a good proxy for the overall social network, especially in the historical period under consideration, when Venice's success was mainly based  on maritime trade.
+
+The rest of the paper is organized as follows. In Section \ref{sec:SoA} we present the state of the art. In Section \ref{sec:data} we introduce the dataset used in this paper, how it was processed, and its validation. In the next Section \ref{sec2} we analyse it and try to answer the research questions. Finally, in Section \ref{sec13} we present our conclusions and outline future directions of work.
+
+\section{State of the art}\label{sec:SoA}
+
+The extent to which an individual's social ties determine his or her success in moving on to a better job, a higher position of power or any other type of social advancement, has been widely explored  by sociologists, political scientists and economists, often with very different focuses and language; therefore, providing an exhaustive review of these works is beyond the scope of this article. (See  \citet{western2024social} for a recent survey on the connection between social capital and social mobility and \citet{dasgupta2000social} for a collection of articles discussing the multifaceted aspects of the concept of social capital.) Below we simply sketch the most important insights of the field and present some works relevant to our analysis.
+
+In the labour market a number of studies have established the importance of social networks as a means of obtaining a job or advancing in one's career, and sought to characterize which type of relations contribute most to social capital. In his influential work, \citet{granovetter1973strength, granovetter1974getting} shows that not only do social networks play an important role in occupational  mobility but, surprisingly,  weak ties, i.e., ties that are somewhat occasional, are more important than strong ones. He argues that weak ties are more likely to create a bridge between groups that are not connected to each other and, therefore, are also more likely to enable new information to flow, thus building social capital. Elaborating on this idea,  \citet{lin1986access} note that the occupational status of the contact person is also important, because more influential people can help one get a more prestigious job. It should be noted that much of this research does not examine the structure of the entire network but merely considers pairwise ties. An effort to go beyond a characterisation of two-ways ties is found in \citet{burt1992structural,burt2001structural} who introduces the notion of a structural hole, defined as the absence of connections between two groups of people, and points out that being able to fill a structural hole, thus connecting otherwise separated individuals, can allow one to control important flows of information and, thus,  become a source of power.
+
+Moving beyond labour markets and closer to the topic of this paper, the role of social connections in facilitating access to positions of prestige has also been documented in relation to political power. For example, \citet{razafindrakoto2021hyper} use a sample of one thousand  members of the elite in Madagascar in 2012--14, to test whether the level of power attained by an individual was explained by the features of his or her network of contacts, such as the size, quality, diversity and strength of ties. \citet{xu2018costs}, instead, looked at officials of the Colonial Office of the British Empire in the period 1854--1966 to show that the salary of senior bureaucrats was positively associated with the degree of their connectedness, measured using proxies such as shared ancestry, membership in the aristocracy, and having attended the same school or university.
+
+What is remarkable about the literature on social capital reviewed so far is that, although most of what is discussed could find a natural equivalent in social network analysis, there remains a divide between these two lines of research \citep{mcdonald2024revisiting}.
+%For example, Burt's discussion of the position of an individual bridging a structural hole, which we mentioned earlier, is reminiscent of the notion of betweenness in social network analysis, but there is no reference to it in Burt's work.
+An effort to link the two strands is found in \citep{jackson2020typology}, where the various facets of the concept of social capital are associated with existing  measures of network centrality. Of the seven types of social capital he analyses, the one that is more relevant for our paper is brokerage capital, which consists  in the ability to serve as an intermediary for other people who are not directly connected. In fact, as we explained in the introduction, before 1323 and the establishment of hereditary rule, a family's admission to the Great Council was facilitated by having access to a social network of influential people who could guarantee a sufficient number of votes. As a measure of brokerage capital, Jackson suggests  betweenness centrality \citep{freeman77}, which measures how often a node lies on the shortest path between any pair of other nodes.
+
+A shortcoming of betweenness centrality, however, is that it is calculated without taking into account self-loops, which in this case emerge when both the {\em stans} and the {\em tractor} belong to the same family. Because there is a fair amount of such contracts in the {\em colleganza} network, in this paper we use  DNSL-betweenness \citep{merelo2024intra},  which also measures brokerage capital but, by including self-loops, more accurately reflects  network dynamics that would otherwise be lost. Although we believe that DNSL-betweenness provides a better measure of a family's social capital when self-loops are numerous, it is very likely that any other measure of social capital, such as (standard) betweenness centrality  or eigenvalue centrality, will yield  similar (though less statistically accurate) results.
+
+We conclude this review with four papers that are closer to our work, as they use social network analysis to study how access to political power can be associated with one's position in the social network.  \citet{padgett1993robust}  use data on marriages, business connections  and patronage relations to examine the network of elite families in 15th century  Florence. Their analysis does not focus on  measures of centrality but uses block modelling  to represent the Florentine social network. What they show is that the Medici, by strategically marrying into isolated patrician families and forging economic alliances with new men, achieved a gate-keeping  position: their partisans were connected to each other, and other oligarchic families, almost exclusively through the Medici. This hub and spoke network allowed Cosimo Medici to consolidate his power and prevail over other wealthier and politically powerful families, such as the Strozzi. The shape of the Florentine network is in sharp contrast to the one we get for Venice using the {\em colleganza} contracts (see Figure~\ref{fig:colleganza.rq3.setup}). In the latter, no family genuinely plays the role of hub, and most nodes are connected to the rest of the network with multiple ties.
+
+The remaining three papers, unlike ours, use eigenvector \citep{BONACICH2007555} as a measure of centrality which, according to \citet{jackson2020typology}, gives a measure of the information capital defined as the ability to acquire information and disseminate it to others.  \citet{cruz2017politician} study a marriage network of Filipino politicians in 2007--10 and find that more central families are over-represented in the set of political candidates and get a proportionally larger share of votes. \citet{telek2018three}, instead, uses data on elected officials in the Republic of Venice between 1400 and 1524 to show that marrying a bride from a patrician family with high centrality in the marriage network nearly doubles the chances to gaining access to high-level political positions.  %Telek uses eigenvector c. than check robustness when changing to betweenness c.%
+Finally, \citet{PugaTrefler} turn their attention to Venice before and after 1300 and use data on patricians, their use of the {\em colleganza} and their marriages, to show that more central families in the marriage network were able to leverage their alliances to monopolise the galley trade after the {\em Serrata}. In this way, these Venetians families were able to use the social capital they had accumulated during the commercial revolution to stop political and economic competition. Although the datasets we use are the same as some of  Puga and Trefler's, in our paper the network is based on {\em colleganza} contracts, whereas they use marriages; in addition, we focus on access to the Great Council rather than long-distance trade participation after the {\em Serrata}.
+
+\section{Data preparation and analysis}\label{sec:data}
+
+<<colleganza.setup, echo=FALSE, message=F, warning=F, fig.height=4, fig.cap="Number of contracts per year in the colleganza dataset.">>=
+library(ggplot2)
+raw.data <- read.csv("data-raw/venice_colleganza.csv")
+data.no.duplicates <- raw.data[ raw.data$repeat_note == '', ]
+data.no.duplicates[ data.no.duplicates$stans_familyname_italian == '',]$stans_familyname_italian = data.no.duplicates[ data.no.duplicates$stans_familyname_italian == '',]$stans_firstname_italian
+ggplot(data.no.duplicates, aes(x=year)) + geom_bar(stat="count") + theme_minimal() + labs(title="", x="Year", y="Number of contracts")
+
+@
+
+The data used were first published by \citet{PugaTrefler} and made available under a free license. As stated by the authors, the dataset was extracted from a list of various types of notarial deeds, including wills, leases, and other types of loans, from previous archival work. From this list, the {\em colleganza} contracts were identified using the criteria set out in \cite{de2008secret} and \cite{kedar1976merchants}, resulting in a total of \Sexpr{length(raw.data$docnumber)}  contracts. From this dataset, we removed rows that corresponded to a duplicate of a previous contract, identified by a note in the {\tt repeat\_note} column, thus obtaining \Sexpr{length(data.no.duplicates$docnumber)} contracts. We also worked on family names; the original dataset was missing the {\tt familyname} column of the \stans{} family in 3 contracts that we filled by replicating the common name as family name. These three cases do not match any known family name, so it does not introduce spurious family links.
+
+The dataset that resulted after these two transformations (deletion of duplicate rows and empty family name filling) is the one used in this paper. The processed files that are imported directly to perform the data analysis and were created from Puga and Trefler's will be made available under a free license. Every row of this dataset represents a contract. Typically a contract has one {\em tractor} and one {\em stans} family but \Sexpr{length(data.no.duplicates[data.no.duplicates$tractor_2_familyname_std != "",]$docnumber)} contracts  include a second {\em tractor} family and \Sexpr{length(data.no.duplicates[data.no.duplicates$stans_2_familyname_std != "",]$docnumber)} contracts a second {\em stans} family. In no case are there a second {\em tractor} and a second {\em stans}, so each contract involves at most three persons.
+
+The contracts in the dataset cover the period from \Sexpr{min(data.no.duplicates$year)} to \Sexpr{max(data.no.duplicates$year)}. The number of contracts per year is shown in Figure \ref{fig:colleganza.setup}. As can be seen, there is a gap for the years 1262–1309. This does not imply that there were no contracts on those years, only that there are insufficient sources for them. As mentioned above, the dataset comes from previous archival works and specifically from four sources: the first two, \citet{lombardo1953nuovi} and \citet{morozzo1940documenti} cover a collection of acts drawn  by notaries around the Mediterranean and the  Black Sea in the period 1073--1261. These are the contracts before the gap in Figure \ref{fig:colleganza.setup}.  The other two sources, \citet{bondifelice} and \citet{tiepolo1970domenico}, include  contracts from two single notaries operating in Venice and cover a much shorter period of time.
+
+For our analysis we also need to identify the set of families admitted to the Great Council. For this we follow Puga and Trefler; their dataset includes columns for {\em stans} and {\em tractor} in which, for each contract, the standardized name of the family that had a member in the Great Council at any time between 1261 and 1323 is entered. These are the noble families for the purposes of this work.
+
+We are aware that only a fraction of all the {\em colleganza} contracts have survived and that our dataset is necessarily incomplete, as discussed in  \citet{de2008secret} and \citet{ shadrina2024}.  This is a  constant in social network analysis: it is virtually impossible to record all the social transactions that form the edges (and even, sometimes, the nodes) of the graph; all the more so when network analysis is applied to history. Nonetheless, we want to rule out specific biases associated with the types of contracts that survived and, to validate our database, we try to identify significant economic and legal changes that we know occurred in Venice during the period under consideration, to see if they are captured in the data.
+
+The most important event was in 1204, with the overthrow of the Byzantine empire after the Fourth Crusade, a  turning point in the history of Venice since it marked its transformation from an Adriatic power to a Mediterranean empire.  Venetians enjoyed important commercial privileges in the Levant even before 1204: in 992 an imperial {\em chrysobull} exempted them from duties on goods, and privileges were further extended in 1082, when another {\em chrysobull} granted formal extraterritorial status to the Venetian quarter in Constantinople.
+However, these privileges were often a source of friction and were repeatedly challenged over the twelfth century \citep{borsari1988,angold2021,shadrina2024}, \citep[chap 6]{wickham2023donkey}. It is only after the conquest of Constantinople and the creation of the Latin Empire that the {\em Stato de Mar}, Venice dominion over the eastern Mediterranean Sea, reached its greatest extent. Venice gained control of three-eighths of Constantinople, including important ports and trading districts. This provided new opportunities for Venetian merchants, who expanded rapidly throughout the Mediterranean and extended their sphere of influence  to Egypt, Syria, and as far as the Black Sea \citep{romano24,rosch95}. An  increase in commercial activity after 1204 should therefore naturally emerge from a non-biased dataset. A second reason for the increase in the number of contracts is the gradual shift  from the bilateral to the unilateral {\em colleganza}.  By the early thirteenth century, bilateral contracts had practically disappeared, so much so that the Tiepolo Statutes of 1242 regulated only the unilateral type. Without the need for co-financing, {\em colleganza} contracts became accessible even to poor merchants \citep{lane:colleganza}, \citep[p. 104]{luzzatto1954}.
+
+<<colleganza.validation, echo=FALSE, warning=FALSE, message=F, fig.height=4, fig.cap="Number of contract-pairs per year, with averages before and after the changepoint.">>=
+library(changepoint)
+library(dplyr)
+
+# Use number of contracts!!!!!
+data.no.duplicates %>% group_by(year) %>% summarise(Contracts=n()) -> contracts.per.year
+contracts.all.years <- data.frame(year=numeric(),Contracts=numeric())
+for (i in min(contracts.per.year$year):max(contracts.per.year$year)) {
+  contracts <- ifelse( is.null(contracts.per.year[contracts.per.year$year==i,]$Contracts ), 0, contracts.per.year[contracts.per.year$year==i,]$Contracts)
+  contracts.all.years <- rbind(contracts.all.years,
+                                    data.frame(year=i,Contracts=contracts))
+}
+contracts.all.years[ is.na(contracts.all.years$Contracts),]$Contracts <- 0
+contracts.pre.serrata <- contracts.all.years[contracts.all.years$year <= 1261,]
+contracts.changepoint.mean <- cpt.mean(contracts.pre.serrata$Contracts)
+contracts.changepoint.date <- contracts.pre.serrata[cpts(contracts.changepoint.mean),]$year
+
+load("data/colleganza.pairs.date.rda")
+
+colleganza.pairs.date %>% group_by(date) %>% summarise(Contracts=n()) -> contract.pairs.per.year
+
+contract.pairs.all.years <- data.frame(date=numeric(),Contracts=numeric())
+for (i in min(contract.pairs.per.year$date):max(contract.pairs.per.year$date)) {
+  contracts <- ifelse( is.null(contract.pairs.per.year[contract.pairs.per.year$date==i,]$Contracts ), 0, contract.pairs.per.year[contract.pairs.per.year$date==i,]$Contracts)
+  contract.pairs.all.years <- rbind(contract.pairs.all.years,
+                                    data.frame(date=i,Contracts=contracts))
+}
+contract.pairs.all.years[ is.na(contract.pairs.all.years$Contracts),]$Contracts <- 0
+
+contracts.pre.serrata <- contract.pairs.all.years[contract.pairs.all.years$date <= 1261,]
+
+changepoint.mean <- cpt.mean(contracts.pre.serrata$Contracts)
+
+changepoint.date <- contracts.pre.serrata[cpts(changepoint.mean),]$date
+
+contracts.pre.cp <- mean(contract.pairs.all.years[ contract.pairs.all.years$date <= changepoint.date,]$Contracts)
+contracts.post.cp <- mean(contract.pairs.all.years[ contract.pairs.all.years$date > changepoint.date,]$Contracts)
+# ggplot(contracts.pre.serrata, aes(x=date,y=Contracts)) + geom_bar(stat='identity') + geom_segment(aes(x=min(contracts.pre.serrata$date),xend=changepoint.date,y=contracts.pre.cp, yend=contracts.pre.cp), color="red") + geom_segment(aes(x=changepoint.date+1,xend=1261,y=contracts.post.cp, yend=contracts.post.cp), color="red") + theme_minimal() + labs(title="Number of contracts per year", x="Year", y="Number of contract pairs")
+plot(changepoint.mean,ylab="Number of contract-pairs per year",xlab="Year",main="Number of contract-pairs per year", xaxt="n")
+years.seq <- seq(min(contract.pairs.per.year$date),1261,10)
+ticks.seq <- years.seq - min(contract.pairs.per.year$date)
+axis(1,at=ticks.seq,labels=years.seq)
+@
+
+
+Before proceeding with the analysis, we transform the original dataset to account for contracts involving more than two families.  Instead of simply counting contracts, we consider contract-{\em pairs}, i.e., the number of links between families created by a contract:  two  families (a {\em stans} and a {\em tractor}) signing a contract lead to a single pair, while with three families three pairs are created. This allows us to measure the social ties generated by a contract, a variable  we believe to be the most relevant since we are conducting our analysis in a social network context.
+
+To check if there is a significant change in the time series of the number of contract-pairs, we use a statistical tool that tries to find the point in a time series with the maximal difference in averages before and after; to avoid the gap in the dataset, we consider only contracts prior to 1261. The result obtained using  the {\sf changepoint} package  \citep{changepoint} is shown in Figure \ref{fig:colleganza.validation} from which a statistically significant change of regime emerges with a changepoint in \Sexpr{changepoint.date}; the average annual number of pairs involved in contracts before and after that date, shown as a red line in the figure, goes from an average of \Sexpr{round(contracts.pre.cp,digits=2)} contract-pairs before the changepoint to \Sexpr{round(contracts.post.cp, digits=2)} after  that changepoint. The changepoint obtained indicates a change of regime slightly before the conquest of Constantinople in the 4th Crusade, mainly due to bouts of activity by mid-12th century and by the end of that century (ending circa 1194). A steep increase, however, can be observed after 1203, with a sustained activity after that date.
+
+% JJ - there are further analyses that can be done here, like for instance, the entropy of the contracts, or the actual families that were involved in it. For the time being, I would say that we keep the changepoint for later, just in case we need differentiated analysis.
+%
+<<colleganza.rq1.averages, echo=F>>=
+# Compute first families per contract
+families <- unique(c(data.no.duplicates$tractor_familyname_italian, data.no.duplicates$stans_familyname_italian, data.no.duplicates$tractor_2_familyname_italian, data.no.duplicates$stans_2_familyname_italian))
+how.many.families <- length(families)
+data.no.duplicates %>% select(tractor_familyname_italian, stans_familyname_italian, tractor_2_familyname_italian, stans_2_familyname_italian) %>%
+  apply(1, function(x) x[x != ""]) -> families.in.contracts
+
+families.per.contract <- data.frame(families=numeric(0),unique.families=numeric(0),repeated.families=numeric(0))
+
+for ( i in 1:length(families.in.contracts)) {
+  x = unname(families.in.contracts[[i]])
+  families.per.contract <- rbind(families.per.contract,
+        data.frame(families=length(x),
+                   unique.families=length(unique(x)),
+                   repeated.families=length(x) != length(unique(x))
+                   )
+        )
+}
+
+
+families.per.contract$year <- data.no.duplicates$year
+families.per.contract.pre <- families.per.contract[families.per.contract$year <= changepoint.date,]
+families.per.contract.post <-families.per.contract[families.per.contract$year > changepoint.date & families.per.contract$year < 1261 ,]
+avg.families.pre.cp <- mean(families.per.contract.pre$families)
+avg.families.post.cp <- mean(families.per.contract.post$families)
+avg.unique.families.pre.cp <- mean(families.per.contract[families.per.contract$year <= changepoint.date,]$unique.families)
+avg.unique.families.post.cp <- mean(families.per.contract[families.per.contract$year > changepoint.date,]$unique.families)
+
+w.test.families <- wilcox.test( families.per.contract.pre$families, families.per.contract.post$families)
+w.test.unique.families <- wilcox.test( families.per.contract.pre$unique.families, families.per.contract.post$unique.families)
+@
+
+
+Based on the result obtained we feel confident on the representativeness of the contracts in the dataset before 1261. The rest of the dataset is necessarily more incomplete, as explained at the beginning of this section, but it can nevertheless give us some useful indication of the prevalence of each family in the two roles of {\em stans} and {\em tractor}.
+
+<<colleganza.families, echo=FALSE, message=FALSE>>=
+lapply(families.in.contracts, function(x) length(x) != length(unique(x) )) -> contracts.with.duplicates
+
+how.many.contracts.with.duplicates <- sum(unlist(contracts.with.duplicates))
+
+contracts.per.family <- data.frame(family=character(0), count=numeric(0))
+for ( contract in families.in.contracts ) {
+  families <- unique(contract)
+  for ( family in families ) {
+    if ( family %in% contracts.per.family$family ) {
+      contracts.per.family[contracts.per.family$family == family,]$count <- contracts.per.family[contracts.per.family$family == family,]$count + 1
+    } else {
+      contracts.per.family <- rbind(contracts.per.family, data.frame(family=family, count=1))
+    }
+  }
+}
+
+library(kableExtra)
+library(jsonlite)
+
+italian.to.std.map <- read_json("data-raw/italian-to-std.json")
+
+top.contracts.per.family <- head(contracts.per.family[order(contracts.per.family$count, decreasing=TRUE),], 10)
+top.contracts.per.family$std.family <- top.contracts.per.family$family
+for ( i in 1:nrow(top.contracts.per.family)) {
+  this.family <- top.contracts.per.family[i,]$family
+  if ( this.family %in% names(italian.to.std.map)) {
+    top.contracts.per.family[i,]$std.family <- italian.to.std.map[ this.family ]
+  }
+}
+top.contracts.per.family$family <- NULL
+
+kable(top.contracts.per.family, row.names = F, booktabs = T, caption="Top ten Venetian families by number of colleganza contracts." )
+@
+
+Before turning to our research questions, let us conclude the presentation of the data by looking at family names in the dataset.  There are a total of \Sexpr{how.many.families} families; each contract can include up to three families; however, there are \Sexpr{how.many.contracts.with.duplicates} that involve members of the same family on both the {\em stans} and {\em tractor} sides of the same contract.  Table \ref{tab:colleganza.families} shows the top ten families by number of contracts; note that this is the number of contracts where the family appears; if two members of the same family participate in the contract, it is still counted as one. As the table shows, the family with the most contracts is the Gradenigo family with  \Sexpr{max(contracts.per.family$count)} contracts.
+
+% Please consult the "Data availability" section of this paper for instructions to download the dataset and the code used to generate the results in this paper.
+
+\section{Results}\label{sec2}
+
+% RQ 2: division between tractor and Stan
+<<colleganza.rq2, echo=FALSE, message=F, warning=F, fig.pos="h!tbp", fig.height=2.5, fig.cap="Number of families by role in the colleganza network.">>=
+load("data/colleganza.family.types.rda")
+
+colleganza.family.types[ colleganza.family.types$Type == "Both",]$Type <- "Mobile"
+ggplot(colleganza.family.types, aes(x=Type, fill=Type)) + geom_bar() + theme_minimal() + labs(title="Family types in the colleganza network", x="Family type", y="Number of families")
+
+load("data/colleganza.family.flips.rda")
+library(tidyverse)
+colleganza.family.flips %>% group_by( Flips ) %>% summarise(n=n()) -> colleganza.family.flips.summary
+colleganza.family.flips[ colleganza.family.flips$Flips == 0,] %>% group_by( First ) %>% summarise(n=n(), percentage=n()/nrow(.)) -> colleganza.family.flips.first.summary
+@
+
+We start our analysis by looking at the side (or role) a family assumed in the {\em colleganza} and how it changed over time. As shown in Figure \ref{fig:colleganza.rq2}, there is a majority of families that acted only as {\em stans}, followed by a smaller number of families that acted only as {\em tractor}; however, there is also a significant number of families that  have taken on both roles over time and will be referred to as ``mobile'' families. This evidence could be consistent with a change in role corresponding to social advancement: a {\em tractor} family, after becoming wealthy through long-distance trade, would switch to being a sedentary investor. However, as Figure \ref{fig:colleganza.rq2.direction} shows, this was not necessarily the case, because as many as \Sexpr{sum(colleganza.family.flips$Flips > 1)} families changed side in the contract multiple times. In fact, if we look at the right panel of Figure \ref{fig:colleganza.rq2.direction}, where role changes over time are broken down according to their direction, we see that the case of {\em tractor} families turning into {\em stans} is only marginally more common than the reverse change, where the sedentary investor assumed the role of the travelling merchant. We conclude that not all the role changes can be ascribed to a form of social mobility.
+
+<<colleganza.rq2.direction, echo=FALSE, message=F, fig.pos="h!tp", warning=F, fig.height=3, fig.show="hold", out.width="50%", fig.cap="Number of families who  changed roles more than once by number of changes (left) and number of changes of role by direction of change (right). All contracts are included.">>=
+ggplot(colleganza.family.flips.summary[ colleganza.family.flips.summary$Flips > 1,], aes(x=Flips, y=n)) + geom_bar(stat="identity") + theme_minimal() + labs(title="Number of families that changed role more than once", x="Number of changes", y="Number of families")
+colleganza.family.flips[ colleganza.family.flips$Flips > 0,] %>% group_by( First,Last ) %>% summarise(n=n(), percentage=n()/nrow(.)) -> colleganza.family.both.summary
+
+colleganza.family.flips[ colleganza.family.flips$Flips == 1,] %>% group_by( First,Last ) %>% summarise(n=n(), percentage=n()/nrow(.)) -> colleganza.family.both.once.summary
+
+# right hand side
+colleganza.family.flips[ colleganza.family.flips$Flips > 0,] %>% group_by( First,Last ) %>% summarise(n=n(), percentage=n()/nrow(.)) -> colleganza.family.both.summary
+colleganza.family.both.summary$Mobility <- paste0( colleganza.family.both.summary$First, " → ", colleganza.family.both.summary$Last)
+
+flips.per.type <- read.csv("data-raw/contract-flips-per-type.csv")
+
+ggplot(flips.per.type, aes(x=Type.of.change, y=Number))+ geom_bar(stat="identity")+theme_minimal() + labs(title="Total changes of role", x="Direction of change", y="Number of changes")
+# ggplot(colleganza.family.both.summary, aes(x=Mobility, y=n)) + geom_bar(stat="identity") + theme_minimal() + labs(title="Number of families that changed type at least once", x="Type", y="Number of families")
+@
+
+<<colleganza.rq2.serrata, echo=FALSE, message=F, warning=F, fig.show="hold", out.width="50%",fig.height=3, fig.cap="Distribution of family roles before (left) and after (right) the Serrata in absolute numbers">>=
+
+family.types <- function(family.flips) {
+  family.type.pre <- data.frame( Family=character(0), Type=character(0), stringsAsFactors=FALSE)
+  for (i in 1:nrow(family.flips)) {
+    row <- family.flips[i,]
+    family.type <- "Stans"
+    if (row$Flips == 0 & row$First == "tractor") {
+      family.type <- "Tractor"
+    }
+    if (row$Flips > 0 ) {
+      family.type <- "Both"
+    }
+    family.type.pre <- rbind(family.type.pre, data.frame(Family=row$Family, Type=family.type, stringsAsFactors=FALSE))
+  }
+  return(family.type.pre)
+}
+
+load("data/colleganza.family.flips.post.rda")
+family.types.post <- family.types( colleganza.family.flips.post)
+family.types.post %>% group_by(Type) %>% summarise( n=n()) -> family.types.post.summary
+load("data/colleganza.family.flips.pre.rda")
+family.types.pre <- family.types( colleganza.family.flips.pre)
+family.types.pre %>% group_by(Type) %>% summarise( n=n()) -> family.types.pre.summary
+
+family.types.pre.summary[ family.types.pre.summary$Type == "Both",]$Type <- "Mobile"
+family.types.post.summary[ family.types.post.summary$Type == "Both",]$Type <- "Mobile"
+
+ggplot(family.types.pre.summary, aes(x=Type, y=n, fill=Type)) + geom_bar(stat="identity") + ggtitle("Pre-serrata (1073-1261)") + theme_minimal()
+
+ggplot(family.types.post.summary, aes(x=Type, y=n, fill=Type)) + geom_bar(stat="identity") + ggtitle("Post-serrata (1310-1342)") + theme_minimal()
+
+@
+
+As a final check, we ask ourselves whether the pattern of contract participation has changed over time. Figure \ref{fig:colleganza.rq2.serrata} shows the number of families in every role before and after the {\em Serrata}. More precisely. since we have a gap in the data between 1262 and 1309 and the {\em Serrata} started in 1297, any contract up to 1261 is pre-{\em Serrata} and all the others are post-{\em Serrata}. As can be seen, although the exact number varies, the distribution is the same: most families acted as {\em stans}, followed by those who had the role of {\em tractor} and finally by families who played  both roles. Because the right  panel of Figure \ref{fig:colleganza.rq2.serrata} covers a much shorter time period, the number of families is small, yet there are families that changed role at least once over the period.
+
+The evidence presented so far answers  negatively to both questions in RQ1: there is no evidence of the prevalence of a path of progression that led (initially) poor merchants to abandon the role of {\em tractor} and assume exclusively the role of {\em stans}; on the contrary, the same family could indifferently enter into a contract of {\em colleganza} as {\em stans} or as {\em tractor}, indicating that there was no apparent class division between the two roles. Having ruled out social class as a determinant of the role taken in the contract, we can think of various other circumstances, including age or economic convenience. As pointed out by  \citet[p. 50]{deroover1963}, young people are better able to endure the hardships of sea voyages; thus, when a {\tractor} was no longer fit to go overseas, he could choose to share in the profits of trade as {\em stans}. Another case in which a family could be active on both sides of the {\em colleganza} is that of a wealthy {\em tractor} who combined  his own activity as a travelling merchant with the financing of other traders,  the aim being to diversify risk \citep[p. 67]{luzzatto1954}.
+
+
+
+<<colleganza.family.types.summary, echo=FALSE, message=F, warning=F, fig.height=3, fig.cap="Access to the Great Council for every type of family. All contracts are included. Percentages are taken over the families of that kind, that is, number of families in the MC / number of families of that type x 100.">>=
+load("data/colleganza.family.types.summary.rda")
+colleganza.family.types.summary[ colleganza.family.types.summary$type == "both",]$type <- "Mobile"
+colleganza.family.types.summary[ colleganza.family.types.summary$type == "stan",]$type <- "Stans"
+colleganza.family.types.summary[ colleganza.family.types.summary$type == "tractor",]$type <- "Tractor"
+ggplot(colleganza.family.types.summary, aes(x=type, y=great_council_percentage, fill=type)) + geom_bar(stat="identity") + ggtitle("Percentage of access to Great Council for every type of family") + theme_minimal()
+
+load("data/great.council.families.rda")
+load("data/contract.data.families.rda")
+contract.data.families$great.council <- contract.data.families$Family %in% great.council.families
+
+# ggplot(contract.data.families, aes(x=Role, fill=great.council)) + geom_bar(position="fill") + ggtitle("Access to Great Council for every type of family") + xlab("Family role") + ylab("Proportion of accession to Maggior Consiglio") + theme_minimal()
+@
+
+Let us now turn to RQ2 and explore the relationship between participation in the {\em colleganza} and access to the Great Council. In Figure \ref{fig:colleganza.family.types.summary} we can see the proportion of families who entered the council, broken down by family's role in the contracts. Most of the ``mobile'' families entered the  council  and thus the Venetian patriciate. For {\em stans} only and  {\tractor} only families, on the other hand, becoming noble was not as likely: the percentage was just over fifty per cent and  less than forty percent, respectively. One question raised by Figure~\ref{fig:colleganza.family.types.summary} is whether ``mobile'' families had greater access to the Great Council  just because they were more active in the {\em colleganza}: more contracts implied more social capital and therefore more possibilities of being chosen even across ``class'' boundaries.
+
+
+<<colleganza.rq2.model, echo=FALSE,  fig.show="hold", out.width="50%",message=F, warning=F, fig.height=3, fig.cap="Modelling the probability of access to the MC depending on the number of contracts and family roles. Only pre-Serrata contracts are included. On the right hand side, dashed lines represent the total probability for every kind of role.">>=
+load("data/colleganza.pairs.date.rda")
+colleganza.pairs.pre.1261 <- colleganza.pairs.date[ colleganza.pairs.date$date <= 1261,]
+
+library(tidyr)
+colleganza.pairs.pre.1261 %>% select(Family1,Family2) %>%
+ rowid_to_column() %>%
+ pivot_longer(cols=-rowid) %>%
+ group_by(value) %>%
+ summarise(n = n_distinct(rowid)) -> family.contracts
+
+family.contracts <- rename(family.contracts, Family=value, Number.of.Contracts = n)
+family.contracts$Great.council <- family.contracts$Family %in% great.council.families
+
+# create another column with the family types contained in colleganza.family.types
+
+family.contracts <- merge( family.contracts, colleganza.family.types, by="Family")
+# family.contracts[ family.contracts$Type == "Both",]$Type <- "Mobile"
+
+# ggplot(family.contracts, aes(x=Total.Contracts, y=Last.Year, color=Role, shape=great.council, size=2))+ geom_point(alpha = 0.4) + ggtitle("Number of contracts vs. year") + xlab("Number of contracts") + ylab("Year of the last contract") + theme_minimal()+ scale_size(guide = "none")
+
+# ggplot(contract.data.families, aes(x=Total.Contracts, y=Last.Year, color=Role, shape=great.council, size=2))+ geom_point(alpha = 3/10) + ggtitle("Number of contracts vs. year") + xlab("Number of contracts") + ylab("Year of the last contract") + theme_minimal() + ylim(1275,1400)
+
+ggplot(family.contracts,aes(x=Number.of.Contracts, color=Great.council, y=Type)) + geom_point() + geom_jitter()+ ggtitle("Roles and accession to the MC by number of contracts") + xlab("Number of contracts") + ylab("Family role") + theme_minimal()
+
+mc.model <- glm( Great.council ~ Type + Number.of.Contracts,family=binomial(link="logit"),data=family.contracts)
+anova.mc <- anova(mc.model,test="Chisq")
+to.be.predicted <- expand.grid(Number.of.Contracts=1:20,Type=c("Mobile","Tractor","Stans"))
+to.be.predicted$Probability <- predict(mc.model,newdata=to.be.predicted,type="response")
+# Make the model lines stand out more, or the dashed line thinner !!!
+ggplot(to.be.predicted, aes(x=Number.of.Contracts, y=Probability, group=Type, color=Type)) + geom_line() + ggtitle("Probability of accessing Maggior Consiglio depending on the number of contracts according to the regression model") + xlab("Number of contracts") + ylab("Probability of accessing Maggior Consiglio") + theme_minimal() + geom_line(aes(y=colleganza.family.types.summary[colleganza.family.types.summary$type == "Mobile",]$great_council_percentage/100),color="red",linetype="dashed",alpha=0.2)+ geom_line(aes(y=colleganza.family.types.summary[colleganza.family.types.summary$type == "Stans",]$great_council_percentage/100),color="blue",linetype="dashed",alpha=0.2)+ geom_line(aes(y=colleganza.family.types.summary[colleganza.family.types.summary$type == "Tractor",]$great_council_percentage/100),color="green",linetype="dashed",alpha=0.2)
+
+@
+
+
+To answer this question, we turn our attention to the number of contracts per family. In this analysis it is more appropriate to consider only contracts prior to the {\em Serrata}, that is, those up to 1261.\footnote{Please note that the classification of families by role is not affected by this restriction  because every ``mobile'' family in the entire dataset remains ``mobile'' in the pre-1261 dataset.} The left panel of Figure \ref{fig:colleganza.rq2.model} plots the number of contracts  on the $x$ axis while the roles the family had across the dataset are shown as vertical bands; the vertical position within the band is used so that individual families can be distinguished; it does not represent any quantity. Colour is related to access to the Great Council. Two facts stand out: first, ``mobile'' families entered far more contracts than ``static''  families (either {\em stans} or {\em tractor}) did; second, regardless of their role, the families who were most active in the {\em colleganza} were also those who were more likely to be admitted to the council. To further investigate this aspect, we use logistic regression to compute the probability of joining the Great Council depending on the number of contracts. The results are shown in the right panel of Figure \ref{fig:colleganza.rq2.model} where the solid lines indicate the probability as a function of the number of contracts and the dotted lines the average probability for each group. As can be seen, the probability of entering the council depends on the number of contracts but also very strongly on the role. As an example, a family with 5 contracts has, compared to a ``mobile'' family, a 60\% lower probability if it had been a {\em stans} family and almost 90\% lower if it had been a {\em tractor} family. In fact, we find statistical significance for both the number of contracts and the role of the family, with a $z$-score of \Sexpr{round(coef(summary(mc.model))["TypeStans","z value"],digits=2)} for {\em stans} and \Sexpr{round(coef(summary(mc.model))["TypeTractor","z value"],2)} for {\em tractor}, indicating a significantly different probability of entering the council depending on the role assumed in the {\em colleganza} contracts.
+This answers RQ2: access to the Great Council was clearly correlated with the  role the family played in the {\em colleganza} contracts; in particular, ``mobile'' families were the most likely to be admitted.  A variable that is also important to predict access to the nobility is the number of contracts the family has entered into.
+
+A question that naturally arises, then, is what made participation in many contracts an important variable in the processes of co-optation. The number of contracts in itself is unlikely to have been used as a decision-making variable, but it is likely to have been associated with the social capital a person had accrued. Social capital has been  studied several times in the context of Venetian institutions and social dynamics \citep{merelo2024keeping}. It was also considered in the analysis of international trade by the Julfan Armenian community, a community which had close contacts with the Republic of Venice during the period examined in this paper \citep{Aslanian2006}. This is why we turn to RQ3 and to the relationship between social capital (represented by status within a social network) and a family's admission to the Great Council.
+
+<<colleganza.rq3.setup, echo=F, message=F, warning=F, fig.cap="Main connected component of the colleganza contract network, with nodes representing families, and links participation in a contract. Node size is proportional to betweenness.", fig.pos="h!tbp">>=
+load("data/colleganza.graph.rda")
+
+library(igraph)
+V(colleganza.graph)$betweenness <- betweenness(colleganza.graph)
+
+colleganza.subgraph <- induced_subgraph(colleganza.graph, V(colleganza.graph)[V(colleganza.graph)$betweenness > 0])
+
+V(colleganza.subgraph)$degree <- degree(colleganza.subgraph)
+colleganza.subgraph <- induced_subgraph(colleganza.subgraph, V(colleganza.subgraph)[V(colleganza.subgraph)$degree > 0])
+
+components <- igraph::components(colleganza.subgraph, mode="weak")
+biggest_cluster_id <- which.max(components$csize)
+colleganza.subgraph <- induced_subgraph(colleganza.subgraph, V(colleganza.subgraph)[components$membership == biggest_cluster_id])
+par(mar=c(0,0,0,0)+.65)
+plot(colleganza.subgraph, vertex.size=V(colleganza.subgraph)$betweenness/300, edge.arrow.size=0.5, edge.curved=0.1, edge.color="grey", main="Colleganza subgraph", layout=layout_with_graphopt)
+@
+
+To this end, we created an undirected graph in which nodes represent families and edges represent co-participation in a contract in any role. The resulting simplified main component of the network is shown in Figure \ref{fig:colleganza.rq3.setup}.\footnote{Following common practices, as exemplified in \citet{Wu2025}, in order to de-clutter the visualization we eliminated all nodes with 0 betweenness, then eliminated the remaining nodes with degree equal to 0, and finally extracted the main connected component; notice that there were only two other nodes disconnected from the main component.}
+Looking at the figure it can be seen that, among the names that emerge, there  are some families well known to those acquainted with Venetian history, such as Emo, Venier, Giustinian, Morosini, and of course the Contarini, but also others less well known (Viaro, Marioni, de Suligo) \citep{merelo2024keeping,gooddoge}. Another noteworthy aspect is the presence of numerous (self-)loops, i.e. contracts where both the {\em stans} and the {\em tractor} belonged to the same family; for instance, the contract in document number 520 of the dataset was between Filippo Corner as {\em stans} and Giovanni Corner as {\em tractor}.
+
+
+<<colleganza.rq3.dnsl, echo=F,message=F>>=
+V(colleganza.graph)$DNSLbetweenness <- DNSLbetweenness_for_graph(colleganza.graph)
+DNSLbetweenness.df <- data.frame( Family= V(colleganza.graph)$name,
+                                 DNSLbetweenness = V(colleganza.graph)$DNSLbetweenness )
+kable(head(DNSLbetweenness.df[order(DNSLbetweenness.df$DNSLbetweenness, decreasing=TRUE),], 10), col.names=c("Family","DNSL-betweenness"),row.names = F, booktabs = T, caption="Top ten Venetian families by DNSL-betweenness measured for the whole dataset." )
+
+@
+
+In cases where self-loops are present, betweenness centrality does not take them into account; this is why the authors proposed a new measure based on the duplication of some nodes \citep{merelo2024intra}. Duplicated Nodes with Self Loops-betweenness, DNSL-betweenness for short, is a measure  that  correlates better with a family's social capital, and reflects more closely the family's ranking, because it takes into consideration the number of self-loops in the numerical calculation of betweenness. The top ten families according to DNSL-betweenness is shown in Table \ref{tab:colleganza.rq3.dnsl}. Comparing with Table \ref{tab:colleganza.families}, we can verify  that social capital (as measured by DNSL-betweenness) determines a ranking quite different from that based on the number of contracts. In other words, a family does  not have a better position in the social network just because it signed more contracts; for example, the Gradenigo family, first in terms of contracts, does not even appear in the social capital top ten ranking; in contrast, the Contarini family, which does not have enough contracts to enter the top ten in Table~1, ranks fourth in terms of social capital.
+
+
+
+<<colleganza.rq3.families, echo=F, message=F, fig.cap="Pre-Serrata colleganza network, with only-stans families represented by circles, only-tractor by squares, and ``mobile'' by spheres;  families in yellow  were not admitted to the Great Council while those in red were. The node size represents DNSL-betweenness.">>=
+colleganza.slice <- function( from=1073,to=1342) {
+  colleganza.pairs.slice <- colleganza.pairs.date[ colleganza.pairs.date$date >= from & colleganza.pairs.date$date <= to,]
+  return( graph_from_data_frame(colleganza.pairs.slice, directed=F))
+}
+
+pre.serrata <- colleganza.slice(to=1261)
+V(pre.serrata)$DNSLbetweenness <-  DNSLbetweenness_for_graph(pre.serrata)
+
+load("data/great.council.families.rda")
+V(pre.serrata)$color <- "yellow"
+V(pre.serrata)[V(pre.serrata)$name %in% great.council.families]$color <- rgb(0.7,0,0,0.5)
+
+components <- igraph::components(pre.serrata, mode="weak")
+biggest_cluster_id <- which.max(components$csize)
+pre.serrata.mcc <- induced_subgraph(pre.serrata, V(pre.serrata)[components$membership == biggest_cluster_id])
+
+V(pre.serrata.mcc)$degree <- degree(pre.serrata.mcc)
+pre.serrata.mcc <- induced_subgraph(pre.serrata.mcc, V(pre.serrata.mcc)[V(pre.serrata.mcc)$degree > 1])
+
+for ( family in V(pre.serrata.mcc)$name ) {
+  if ( family %in% colleganza.family.types$Family ) {
+    V(pre.serrata.mcc)[family]$type <- colleganza.family.types[colleganza.family.types$Family == family,]$Type
+  } else {
+    V(pre.serrata.mcc)[V(pre.serrata.mcc)$name == family]$type <- "Unknown"
+  }
+}
+
+V(pre.serrata.mcc)$shape <- "circle"
+V(pre.serrata.mcc)[V(pre.serrata.mcc)$type == "Mobile"]$shape <- "sphere"
+V(pre.serrata.mcc)[V(pre.serrata.mcc)$type == "Tractor"]$shape <- "square"
+par(mar=c(0,0,0,0)+.65)
+plot(pre.serrata.mcc, vertex.size=V(pre.serrata.mcc)$DNSLbetweenness/200, vertex.color=V(pre.serrata.mcc)$color, edge.arrow.size=0.5, edge.curved=0.1, edge.color="grey", main="Pre-serrata colleganza graph", layout=layout_with_graphopt)
+@
+
+To study whether the social capital accrued in the {\em colleganza}  network affected the eventual co-optation into the Great Council, we study the social network restricted to contracts made before the {\em Serrata}. A synthetic visualization can be found in Figure \ref{fig:colleganza.rq3.families}. As we did for Figure~\ref{fig:colleganza.rq3.setup}, the graph was simplified by including only the main connected component and removing all ``leaves'' with only one connection to another family. What is left is the main connected component reduced to nodes with a degree greater than one.
+The colour of the nodes identifies the social status of the family:  red/dark for families admitted to the nobility and  yellow/light for commoners. The shape is related to the roles the family played in the {\em colleganza} network: the sphere is used for ``mobile''  families,  the square for {\em tractor} families, and the circle for {\em stans} families. Finally, the node {\em size}  is proportional to the DNSL-betweenness computed on the pre-1261 network.
+
+A few facts clearly emerge from the visualization: first,  most of the families of the main connected component were eventually admitted to the Great Council, and only a few among those with some standing in terms of social capital, such as  Marano, de Suligo, Giacomo, Mercadante, Curtolo and Voltani, were left out.
+A second feature jumps out: those with the highest DNSL-betweenness, such as Viaro and Venier, are ``mobile'' families. Curiously enough, some {\em tractor} families seem to have higher DNSL-betweenness than most {\em stans} families. But we must remember that among the {\em stans} there were often small investors such as widows, priests or notaries who invested occasionally and, therefore, were not necessarily linked to many other families.
+
+<<colleganza.rq3.dnsl.model, echo=F, message=F>>=
+DNSLbetweenness.mc <- data.frame(DNSLbetweenness=V(pre.serrata)$DNSLbetweenness,  great.council = V(pre.serrata)$name %in% great.council.families)
+dnsl.glm.fit <- glm(great.council ~ DNSLbetweenness, data=DNSLbetweenness.mc, family=binomial(link="logit"))
+@
+
+To check whether social capital, as measured by DNSL-betweenness, is indeed a good predictor for the family's admission to the Great Council, we use logistic regression again to compute the probability of the admission to the council as a function of a family's social capital. We find that the relationship is statistically significant with a $z$-score of \Sexpr{round(coef(summary(dnsl.glm.fit))[,"z value"][2],digits=2)} for DNSL-betweenness, and a probability of the value being more than $z$ of \Sexpr{round(coef(summary(dnsl.glm.fit))[,"Pr(>|z|)"][2],digits=2)}. This indicates a very strong correlation,  better than the one computed earlier and based on the number of contracts; the latter, in fact,  was only \Sexpr{round(coef(summary(mc.model))[,"Pr(>|z|)"][4],digits=2)}.
+We can therefore answer the last part of RQ3 in the affirmative: the social capital accrued by a family by participating in the {\em colleganza} contracts  before the {\em Serrata}, as measured by DNSL-betweenness on the pre-1261 database, alone can explain why some families were elected to the Great Council while others were not.
+
+Obviously, the correlation found is not, by itself, causation. It is clear that the {\em Quarantia} or the doge's councillors, when voting, took into account the social standing of the family candidate for admission based on a rough estimate of its {\em honor} or general trustworthiness. The average closeness in the  social network under study is \Sexpr{round(mean(unname(closeness(pre.serrata)),na.rm=T),digits=2)}, indicating how easy it was for a family, or group of families, to {\em perceive} these qualities simply by asking for references. Therefore, what the model tells us  is not that families were co-opted into the Great Council {\em because} of their rank according to DNSL-betweenness but, instead, that their perceived social capital was likely associated with their level of DNSL-betweenness.
+
+
+\section{Discussion and conclusions}\label{sec13}
+
+Since the 1960s, following the seminal work of Douglass North and Robert Fogel \citep{mitch2024, lacroix2024} for which they were awarded the Nobel Prize in Economics in 1993, there has been a growing interest in applying quantitative methods to historical data \citep{jarausch2016quantitative} to gain insights into correlations and, possibly, causality, in historical changes; an approach that has been termed {\em cliometrics} \citep{greif1997cliometrics}. Among the many mathematical methods one could use, a special place belongs to social network analysis, whose tools have become increasingly available and can now be applied to a growing number of digitized databases; for Venice see, for example, \citet{timemachine}. This interdisciplinary effort has produced numerous and diverse contributions and now has a dedicated outlet in the {\em Journal of Historical Network Research}. Consistent with this approach, this paper examines a dataset of {\em colleganza} contracts in the Republic of Venice from 1073 to 1343, in order to study the pattern of participation in the contracts and the correlation between the social capital accumulated by families active in the {\em colleganza} and their admission to the Venetian patriciate in the late thirteenth century.
+
+Our analysis allows us to better understand certain aspects of the commercial, social and political history of the Republic of Venice. Firstly, we find that there was little social stratification in the use of {\em colleganza} contracts, i.e., there was no apparent class division between {\em tractor} and {\em stans}, since for many families the two roles were interchangeable.
+Secondly, the visualization of the network confirms that  social capital was dispersed. This is consistent with other studies showing that Venice's political mechanisms  were structured in such a way as to avoid excessive accumulation of power by a single family \citep{mowbray2007, molinari2020}. Thirdly, we study the correlation between a family's social capital, as measured by DNSL-betweenness (a centrality measure that takes into account self-loops), and admission to the nobility and find that a family's centrality in the {\em colleganza} network is a statistically better predictor than the side taken in the contracts (either {\em stans, tractor} or both) and the number of contracts signed. This suggests that in  the Republic of Venice social capital could be used as a currency in exchange for political power.
+
+A further contribution of this work is the introduction of novel methods in the field of quantitative approaches to historical research. In particular, we use shift point analysis to validate the {\em colleganza} dataset by matching epochal shifts to historical events; the results obtained suggest that, although the dataset is not complete (nor could it be), it represents an unbiased and significant sample of the total number of contracts and, as such, provides a solid basis for this research (and possibly others). In general, the validation of historical data has always been a problem, because it can often only be done a posteriori, through an empirical comparison of the  results obtained with known facts or events. Therefore, shift point analysis has great potential in cliometrics.
+
+Furthermore, the paper provides a practical application of the DNSL-betweenness centrality measure, which we introduced in a previous paper. This measure is able to  more accurately reflect social intermediation capital in cases where the social network has self-loops, such as in the case of the {\em colleganza} network.
+
+Research could continue from here in several directions. One is to  integrate other social interactions in the social networks, in addition to the {\em colleganza} contracts, to cover the history of Venice beyond the fourteenth century. Examples of information that could be integrated are  \citet{PugaTrefler}'s matrimonial network,  covering the fourteenth century onward, and  the dataset of political interactions published in \url{https://rulersofvenice.org}. Once the whole social network and its evolution is created, a very interesting venue would be to map the evolution of network measurements (related to social capital or other measures) to events in the history of Venice. In \citet{histories4020012} the centuries covered by a dataset of matrimonies was investigated; extending the investigation to other datasets and dates could help draw interesting conclusions about the intricate relationship between Venetian social networks and its historical events. The evolution of such a network could provide insights into how Venice avoided the fate of other republics on the Italian peninsula, and would allow for a  study of whether Venetian social mores and laws that, by design, prevented any family from becoming too powerful, played a role in its survival by keeping the network a small world and preventing it from becoming a power law.
+
+Another interesting line of research would be to extend the analysis of the correlation between social capital and access to political power to other historical situations that have some similarity to Venice, for example, the Republic of Ragusa (Dubrovnik). In particular, it would be interesting to understand whether the type of correlation is related to a particular polity structure and to its resilience, that is, its long-term survival. In general, we believe that social networks will play an important role in the study of political history, and as new datasets become available, possibly extracted at scale through artificial intelligence methods, quantitative analysis will become a powerful tool for testing historical hypotheses and better understanding the flows of history.
+
+
+
+
+\backmatter
+
+\section*{Declarations}
+
+%Some journals require declarations to be submitted in a standardised format. Please check the Instructions for Authors of the journal to which you are submitting to see if you need to complete this section. If yes, your manuscript must contain the following sections under the heading `Declarations':
+
+\begin{itemize}
+\item Funding: This work is supported by the Ministerio espa\~{n}ol de Econom\'{\i}a y
+Competitividad (Spanish Ministry of Competitivity and Economy) under project
+PID2020-115570GB-C22 (DemocratAI::UGR), as well as PID2023-147409NB-C22.
+
+\item There are no conflicts of interest declared in this research.
+\item Ethics approval and consent to participate: N/A.
+\item Data will be available at publication time, as well as scripts used to reproduce charts and models, from a GitHub repository.
+\item Code is embedded in the paper source, and will be available from the same repository as the data.
+\item Author contribution. JJ Merelo has written the code. Both authors have contributed equally to conceptual organization of the paper, analysis of results, and actual writing of the paper.
+\end{itemize}
+
+\bibliography{colleganza,patrician,stats,literature}% common bib file
+%% if required, the content of .bbl file can be included here once bbl is generated
+%%\input sn-article.bbl
+
+
+\end{document}
