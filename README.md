@@ -1,7 +1,11 @@
 # Analysis of colleganza contracts in the Republic of Venice
 
 Repo for paper "An analysis of colleganza contracts in the Republic of Venice
-and its relat﻿ionship﻿ to the Serrata of the Great Council"
+and its relat﻿ionship﻿ to the Serrata of the Great Council".
+
+This has been generated from the [GitHub
+repository](https://github.com/JJ/analysis-colleganza-contracts), where you can
+refer to for the full source and data.
 
 ## Cite
 
@@ -30,10 +34,27 @@ or
 
 ## Use
 
+The contents of this repository can be downloaded either from the GitHub repo
+using git:
+
+```
+git clone https://github.com/JJ/analysis-colleganza-contract
+```
+
+or from the [release made at the same
+repository](https://github.com/JJ/analysis-colleganza-contracts/releases/tag/v1.0),
+which contains all files in it.
+
 You can use Rstudio to replicate the paper from the data, which is kept in the
-[`data`](https://github.com/JJ/analysis-colleganza-contracts/tree/main/data/) repository for R files, [`data-raw`](https://github.com/JJ/analysis-colleganza-contracts/tree/main/data-raw/) for CSV and JSON
-files. In order to reproduce the paper, load [`main.Rtex`](https://github.com/JJ/analysis-colleganza-contracts/tree/main/main.Rtex) in
-RStudio, and click on "PDF" to generate it.
+[`data`](https://github.com/JJ/analysis-colleganza-contracts/tree/main/data/)
+repository for R files,
+[`data-raw`](https://github.com/JJ/analysis-colleganza-contracts/tree/main/data-raw/)
+for CSV and JSON files.
+
+The analysis and generation of all figures and tables in the paper is embedded
+in its source; in order to reproduce it, load
+[`main.Rtex`](https://github.com/JJ/analysis-colleganza-contracts/tree/main/main.Rtex)
+in RStudio after downloading this repository, and click on "PDF" to generate it.
 
 ## LICENSE
 
