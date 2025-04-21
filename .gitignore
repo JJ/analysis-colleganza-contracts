@@ -308,3 +308,7 @@ TSWLatexianTemp*
 #*Notes.bib
 .Rproj.user
 *.Rproj
+*.tex
+*.pdf
+figure/
+.Rhistory
