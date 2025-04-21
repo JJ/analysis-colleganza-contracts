@@ -1,7 +1,7 @@
 # Analysis of colleganza contracts in the Republic of Venice
 
-Repo for paper "An analysis of colleganza contracts in the Republic of Venice
-and its relat﻿ionship﻿ to the Serrata of the Great Council".
+Repo for paper ["An analysis of colleganza contracts in the Republic of Venice
+and its relat﻿ionship﻿ to the Serrata of the Great Council"]( https://doi.org/10.1007/s13278-025-01460-9).
 
 This has been generated from the [GitHub
 repository](https://github.com/JJ/analysis-colleganza-contracts), where you can
