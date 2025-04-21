@@ -31,8 +31,8 @@ or
 ## Use
 
 You can use Rstudio to replicate the paper from the data, which is kept in the
-[`data`](data/) repository for R files, [`data-raw`](data-raw/) for CSV and JSON
-files. In order to reproduce the paper, load [`main.Rtex`](main.Rtex) in
+[`data`](https://github.com/JJ/analysis-colleganza-contracts/tree/main/data/) repository for R files, [`data-raw`](https://github.com/JJ/analysis-colleganza-contracts/tree/main/data-raw/) for CSV and JSON
+files. In order to reproduce the paper, load [`main.Rtex`](https://github.com/JJ/analysis-colleganza-contracts/tree/main/main.Rtex) in
 RStudio, and click on "PDF" to generate it.
 
 ## LICENSE
